@@ -1,0 +1,73 @@
+# PHUAMQP Development Environment
+
+services:
+  servicebus-emulator:
+    container_name: "servicebus-emulator"
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator:latest
+    pull_policy: always
+    platform: linux/amd64
+    volumes:
+      - "${AZSB_CONFIG_PATH:-./docker/config/service-bus-config.json}:/ServiceBus_Emulator/ConfigFiles/Config.json:ro"
+    ports:
+      - "5672:5672"
+      - "5300:${EMULATOR_HTTP_PORT:-5300}"
+    environment:
+      SQL_SERVER: mssql
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD}"  # Password should be same as what is set for SQL Server Linux
+      AZSB_AMQP_PASSWORD: ${AZSB_AMQP_PASSWORD:-EmulatorPassword123!}
+      ACCEPT_EULA: ${ACCEPT_EULA:-Y}
+      EMULATOR_HTTP_PORT: ${EMULATOR_HTTP_PORT:-5300}
+      SQL_WAIT_INTERVAL: ${SQL_WAIT_INTERVAL:-15} # Optional: Time in seconds to wait for SQL to be ready (default is 15 seconds)
+      SQL_MAX_RETRIES: ${SQL_MAX_RETRIES:-12}
+    depends_on:
+      - mssql
+    networks:
+      default:
+        aliases:
+          - sb-emulator
+  mssql:
+    container_name: "mssql"
+    image: "mcr.microsoft.com/mssql/server:2022-latest"
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: ${ACCEPT_EULA:-Y}
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD}" # To be filled by user as per policy : https://learn.microsoft.com/en-us/sql/relational-databases/security/strong-passwords?view=sql-server-linux-ver16
+
+  phuamqp:
+    container_name: phuamqp
+    build:
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    restart: "no"
+    depends_on:
+      servicebus-emulator:
+        condition: service_started
+    volumes:
+      - ".:/workspace"
+    command: ["/bin/bash", "/workspace/scripts/run-e2e.sh"]
+    environment:
+      - AZSB_AMQP_HOST=sb-emulator
+      - AZSB_AMQP_PORT=5672
+      - AZSB_AMQP_TRANSPORT=tcp
+      - AZSB_AMQP_USER=RootManageSharedAccessKey
+      - AZSB_AMQP_PASSWORD=EmulatorPassword123!
+      - AZSB_AMQP_TLS_VERIFY=0
+      - PHUAMQP_HOST=sb-emulator
+      - PHUAMQP_PORT=5672
+      - PHUAMQP_USE_TLS=0
+      - PHUAMQP_KEY_NAME=RootManageSharedAccessKey
+      - PHUAMQP_ACCESS_KEY=EmulatorPassword123!
+      - PHUAMQP_QUEUE_NAME=test-queue
+      - PHUAMQP_MESSAGE_COUNT=100
+      - PHUAMQP_CONSUMER_TIMEOUT=60
+      - PHUAMQP_STARTUP_WAIT=3
+    env_file:
+      - path: .env
+        required: false
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  default:
+    name: phuamqp-network

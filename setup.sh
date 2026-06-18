@@ -1,12 +1,10 @@
 #!/bin/bash
-set -e
 
 #----------------------------------------------------------------------------
 # PHP + uAMQP = PHUAMQP
 # Scritpt arguments:
 #   PHUAMQP_PHP_MAJOR_VERSION: The major version of PHP to build against (e.g., 8.3)
 #   PHUAMQP_PHP_CPP_VERSION: The version of PHP-CPP to use (e.g., 2.4.1)
-#   PHUAMQP_EXT_DIR: The directory containing the PHP extension source code (defaults to current script directory)
 #   PHUAMQP_LIBS_BUILD_DIR: The directory where Azure C Shared Utility and uAMQP C will be built (defaults to PHUAMQP_EXT_DIR/libs-build)
 # variables:
 #   PHP_MAJOR_VERSION: The major version of PHP to build against (e.g., 8.3)
@@ -20,21 +18,15 @@ set -e
 #----------------------------------------------------------------------------
 export DEBIAN_FRONTEND="noninteractive"
 export UAMQP_EXT_DIR
+export PHP_MAJOR_VERSION="8.3"
+export PHP_CPP_VERSION="2.4.1"
+
 UAMQP_EXT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -n "${PHUAMQP_EXT_DIR:-}" ]; then
-    UAMQP_EXT_DIR="${PHUAMQP_EXT_DIR}"
-fi
-export PHP_MAJOR_VERSION
 if [ -n "${PHUAMQP_PHP_MAJOR_VERSION:-}" ]; then
     PHP_MAJOR_VERSION="${PHUAMQP_PHP_MAJOR_VERSION}"
-else
-    PHP_MAJOR_VERSION="8.3"
 fi
-export PHP_CPP_VERSION
 if [ -n "${PHUAMQP_PHP_CPP_VERSION:-}" ]; then
     PHP_CPP_VERSION="${PHUAMQP_PHP_CPP_VERSION}"
-else
-    PHP_CPP_VERSION="2.4.1"
 fi
 export UAMQP_LIBS_BUILD_DIR="${UAMQP_EXT_DIR}/libs-build"
 
@@ -77,25 +69,27 @@ apt-get install -y \
 
 echo "✓ Dependencies installed"
 sleep 2
-clear
+if [ -t 1 ] && command -v clear >/dev/null 2>&1; then
+    clear || true
+fi
 
 # ============================================================================
 # Step 2: Install Azure C Shared Utility
 # ============================================================================
 echo ""
 echo "=== Step 2: Building Azure C Shared Utility ==="
-cd "${UAMQP_LIBS_BUILD_DIR}"
+cd "${UAMQP_LIBS_BUILD_DIR}" || exit 1
 
 # Check if repository already exists
 if [ -d "azure-c-shared-utility" ]; then
     echo "✓ Repository already exists, using existing directory"
-    cd azure-c-shared-utility
+    cd azure-c-shared-utility || exit 1
     # Clean previous build
     rm -rf cmake
 else
     echo "Cloning azure-c-shared-utility repository..."
     git clone --recursive --depth 1 https://github.com/Azure/azure-c-shared-utility.git
-    cd azure-c-shared-utility
+    cd azure-c-shared-utility || exit 1
 
     if [ ! -d ".git" ]; then
         echo "✗ Failed to clone azure-c-shared-utility"
@@ -105,7 +99,7 @@ else
 fi
 
 mkdir -p cmake
-cd cmake
+cd cmake || exit 1
 
 # Disable -Werror to avoid format-truncation warnings being treated as errors
 # BUILD_SHARED_LIBS=ON is CRITICAL - without it, only static libraries (.a) are built
@@ -145,18 +139,18 @@ fi
 # ============================================================================
 echo ""
 echo "=== Step 3: Building Azure uAMQP C ==="
-cd "${UAMQP_LIBS_BUILD_DIR}"
+cd "${UAMQP_LIBS_BUILD_DIR}" || exit 1
 
 # Check if repository already exists
 if [ -d "azure-uamqp-c" ]; then
     echo "✓ Repository already exists, using existing directory"
-    cd azure-uamqp-c
+    cd azure-uamqp-c || exit 1
     # Clean previous build
     rm -rf cmake
 else
     echo "Cloning azure-uamqp-c repository..."
     git clone --recursive --depth 1 https://github.com/Azure/azure-uamqp-c.git
-    cd azure-uamqp-c
+    cd azure-uamqp-c || exit 1
 
     if [ ! -d ".git" ]; then
         echo "✗ Failed to clone azure-uamqp-c"
@@ -166,7 +160,7 @@ else
 fi
 
 mkdir -p cmake
-cd cmake
+cd cmake || exit 1
 
 # Disable -Werror to avoid format-truncation and strict-aliasing warnings being treated as errors
 # The azure-uamqp-c code has warnings that would fail the build with -Werror
@@ -225,7 +219,7 @@ sleep 2
 # ============================================================================
 echo ""
 echo "=== Step 4: Building PHP-CPP ==="
-cd "${UAMQP_LIBS_BUILD_DIR}"
+cd "${UAMQP_LIBS_BUILD_DIR}" || exit 1
 
 # PHP-CPP v${PHP_CPP_VERSION} supports PHP 8+
 wget -q "https://github.com/CopernicaMarketingSoftware/PHP-CPP/archive/v${PHP_CPP_VERSION}.tar.gz"
@@ -235,7 +229,7 @@ if [ $? -ne 0 ]; then
 fi
 
 tar xzf "v${PHP_CPP_VERSION}.tar.gz"
-cd "PHP-CPP-${PHP_CPP_VERSION}"
+cd "PHP-CPP-${PHP_CPP_VERSION}" || exit 1
 
 # Check PHP version and set flags
 PHP_VERSION=$(php${PHP_MAJOR_VERSION} -r "echo PHP_VERSION;")
@@ -309,8 +303,8 @@ fi
 echo "✓ All required headers found"
 echo ""
 
-cd "${UAMQP_LIBS_BUILD_DIR}"
-cd "${UAMQP_EXT_DIR}"
+cd "${UAMQP_LIBS_BUILD_DIR}" || exit 1
+cd "${UAMQP_EXT_DIR}" || exit 1
 
 # Check if Makefile exists
 if [ ! -f "Makefile" ]; then
@@ -321,7 +315,7 @@ if [ ! -f "Makefile" ]; then
     echo "⚠ Checking for alternative build method"
     if [ -f "CMakeLists.txt" ]; then
         mkdir -p build
-        cd build
+        cd build || exit 1
         cmake .. -DCMAKE_BUILD_TYPE=Release
         cmake --build . -j"$(nproc)"
     else
