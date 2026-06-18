@@ -8,7 +8,7 @@ This directory now uses an automated setup flow driven by `setup.sh`.
 
 Use the installation guide for the full setup details:
 
-- [`INSTALL.md`](./INSTALL.md)
+- [`INSTALL.md`](./docs/INSTALL.md)
 
 Run the installer from this directory:
 
@@ -34,7 +34,7 @@ The script automates the complete build and install process:
 
 ## Configuration
 
-The supported environment variables and their defaults are documented in [`INSTALL.md`](./INSTALL.md).
+The supported environment variables and their defaults are documented in [`INSTALL.md`](./docs/INSTALL.md).
 
 ## Notes
 

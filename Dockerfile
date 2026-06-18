@@ -25,5 +25,5 @@ COPY . /workspace
 RUN chmod +x /workspace/setup.sh \
     && /bin/bash /workspace/setup.sh
 
-CMD ["php", "/workspace/scripts/test_extension.php"]
+CMD ["/bin/bash", "/workspace/scripts/run-e2e.sh"]
 
