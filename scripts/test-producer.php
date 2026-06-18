@@ -29,8 +29,6 @@ try {
         ];
 
         $message = new Message(json_encode($payload, JSON_THROW_ON_ERROR));
-        $message->setApplicationProperty('sequence-number', 'I', $i);
-        $message->setApplicationProperty('source', 'S', 'phuamqp-producer');
 
         echo sprintf("✓ Sending message %d/%d: %s\n", $i, PHUAMQP_MESSAGE_COUNT, $message->getBody());
         $conn->publish(PHUAMQP_QUEUE_NAME, $message);
