@@ -1,0 +1,37 @@
+name: Build Debian Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        php:
+          - "8.3"
+
+    runs-on: ubuntu-22.04
+    env:
+      PHUAMQP_PHP_MAJOR_VERSION: ${{ matrix.php }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build extension
+        run: |
+          bash ./setup.sh
+
+      - name: Build deb
+        run: |
+          bash ./packaging/build-deb.sh
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: php${{ matrix.php }}-uamqpphpbinding
+          path: "*.deb"
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: "*.deb"
