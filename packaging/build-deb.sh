@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PHUAMQP_PACKAGE_VERSION="v0.1.3"
+PHUAMQP_PACKAGE_VERSION="v0.2.1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
@@ -12,7 +12,7 @@ fi
 PHP_API="${PHUAMQP_PHP_API:-$(${PHP_CONFIG_BIN} --phpapi)}"
 PACKAGE_VERSION="${PHUAMQP_PACKAGE_VERSION:-${GITHUB_REF_NAME:-}}"
 PACKAGE_VERSION="${PACKAGE_VERSION#v}"
-PACKAGE_VERSION="${PACKAGE_VERSION:-0.2.0}"
+PACKAGE_VERSION="${PACKAGE_VERSION:-0.2.1}"
 
 EXTENSION_NAME="uamqpphpbinding.so"
 MODULE_NAME="uamqpphpbinding"
