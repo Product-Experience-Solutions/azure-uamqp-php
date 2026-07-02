@@ -9,7 +9,7 @@ extern "C" {
 
     PHPCPP_EXPORT void *get_module()
     {
-        static Php::Extension extension("uamqpphpbinding", "0.2.0");
+        static Php::Extension extension("uamqpphpbinding", "0.2.1");
 
         Php::Class<Connection> connection("Azure\\uAMQP\\Connection");
         connection.method<&Connection::__construct>("__construct", {
@@ -30,6 +30,7 @@ extern "C" {
             Php::ByVal("loopFn", Php::Type::Callable)
         });
         connection.method<&Connection::consume>("consume");
+        connection.method<&Connection::wasCloseRequested>("wasCloseRequested");
         connection.method<&Connection::close>("close");
 
         Php::Class<Message> message("Azure\\uAMQP\\Message");

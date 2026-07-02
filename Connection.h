@@ -45,6 +45,7 @@ public:
     void publish(Php::Parameters &params);
     void setCallback(Php::Parameters &params);
     void consume();
+    Php::Value wasCloseRequested();
     void close();
 
     void connect();

@@ -176,6 +176,11 @@ void Connection::consume()
     }
 }
 
+Php::Value Connection::wasCloseRequested()
+{
+    return closeRequested || (consumer != NULL && consumer->wasCloseRequested());
+}
+
 std::string Connection::getHost()
 {
     return host;

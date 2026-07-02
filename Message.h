@@ -12,7 +12,6 @@ private:
     MESSAGE_HANDLE message;
     AMQP_VALUE application_properties;
     AMQP_VALUE annotations_map;
-    Php::Value applicationPropertiesMap;
     BINARY_DATA binary_data;
 
 public:

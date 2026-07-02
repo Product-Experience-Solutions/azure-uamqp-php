@@ -12,10 +12,6 @@ try {
         function (Message $message) use (&$nOfMessages) {
             $nOfMessages++;
             echo $message->getBody(), PHP_EOL;
-            echo $message->getApplicationProperty('some-application-property', 'S'), PHP_EOL;
-            echo $message->getMessageAnnotation('x-opt-scheduled-enqueue-time', 'T'), PHP_EOL;
-
-            var_dump($message->getApplicationProperties());
         },
         function () use (&$nOfMessages, $connection) {
             while ($nOfMessages < 2) {
