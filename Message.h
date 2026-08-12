@@ -9,6 +9,7 @@ class Message : public Php::Base
 private:
     std::string body;
     std::vector<unsigned char> bodyBytes;
+    bool bodyDecoded = false;
     MESSAGE_HANDLE message;
     AMQP_VALUE application_properties;
     AMQP_VALUE annotations_map;
@@ -24,6 +25,7 @@ public:
 
     void __construct(Php::Parameters &params);
     Php::Value getBody();
+    Php::Value getBodyType();
     Php::Value getApplicationProperty(Php::Parameters &params);
     Php::Value getApplicationProperties();
     void setApplicationProperty(Php::Parameters &params);

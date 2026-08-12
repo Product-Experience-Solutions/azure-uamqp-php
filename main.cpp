@@ -9,7 +9,7 @@ extern "C" {
 
     PHPCPP_EXPORT void *get_module()
     {
-        static Php::Extension extension("uamqpphpbinding", "0.2.1");
+        static Php::Extension extension("uamqpphpbinding", "0.2.2");
 
         Php::Class<Connection> connection("Azure\\uAMQP\\Connection");
         connection.method<&Connection::__construct>("__construct", {
@@ -38,6 +38,7 @@ extern "C" {
             Php::ByVal("body", Php::Type::String)
         });
         message.method<&Message::getBody>("getBody");
+        message.method<&Message::getBodyType>("getBodyType");
         message.method<&Message::getApplicationProperty>("getApplicationProperty", {
             Php::ByVal("key", Php::Type::String),
             Php::ByVal("type", Php::Type::String)

@@ -29,6 +29,7 @@ public:
     bool wasCloseRequested();
     bool handleMessage(MESSAGE_HANDLE message);
     void handleLinkDetach(ERROR_HANDLE error);
+    void handleCallbackException(const std::string &message);
 
 private:
     void requestStop();

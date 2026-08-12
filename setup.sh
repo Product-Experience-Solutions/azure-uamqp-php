@@ -19,7 +19,7 @@
 export DEBIAN_FRONTEND="noninteractive"
 export UAMQP_EXT_DIR
 export PHP_MAJOR_VERSION="8.3"
-export PHP_CPP_VERSION="2.4.1"
+export PHP_CPP_VERSION="2.4.16"
 
 UAMQP_EXT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -n "${PHUAMQP_PHP_MAJOR_VERSION:-}" ]; then

@@ -5,6 +5,7 @@
 #include "azure_uamqp_c/uamqp.h"
 #include "Session.h"
 #include "Message.h"
+#include <exception>
 
 static void on_link_detach_received_consumer(void* context, ERROR_HANDLE error)
 {
@@ -23,7 +24,15 @@ static AMQP_VALUE on_message_received(const void* context, MESSAGE_HANDLE messag
         throw Php::Exception("Consumer context is not set");
     }
 
-    consumer->handleMessage(message);
+    try {
+        consumer->handleMessage(message);
+    } catch (const Php::Exception &error) {
+        consumer->handleCallbackException(error.what());
+        return messaging_delivery_rejected("amqp:internal-error", error.what());
+    } catch (const std::exception &error) {
+        consumer->handleCallbackException(error.what());
+        return messaging_delivery_rejected("amqp:internal-error", error.what());
+    }
 
     return messaging_delivery_accepted();
 }
@@ -107,6 +116,12 @@ void Consumer::handleLinkDetach(ERROR_HANDLE error)
         exceptionMessage += "(" + std::string(condition != NULL ? condition : "unknown") + ") " +
             std::string(description != NULL ? description : "no description");
     }
+}
+
+void Consumer::handleCallbackException(const std::string &message)
+{
+    stopRunning = true;
+    exceptionMessage = "Message callback failed: " + message;
 }
 
 void Consumer::consume()
