@@ -102,6 +102,18 @@ sudo bash setup.sh
 - It installs packages via `apt-get` and therefore must be run as `root` or with `sudo`.
 - It creates and later removes the temporary `libs-build` directory after a successful run.
 
+## Debug logging
+
+When a connection is created with debug mode enabled, uAMQP logs are written to standard output.
+Set `UAMQP_DEBUG_FILE` to append those logs to a file instead:
+
+```bash
+export UAMQP_DEBUG_FILE=/var/log/uamqp-debug.log
+```
+
+If the file cannot be opened for writing, the extension reports the error on standard output and
+continues logging to standard output.
+
 ## Subscription debugging command
 
 The repository includes a standalone C++ diagnostic consumer in `debugging/`. It accepts the

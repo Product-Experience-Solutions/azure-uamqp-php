@@ -1,5 +1,6 @@
 #include <phpcpp.h>
 #include <exception>
+#include <cstdlib>
 #include <cstdio>
 #include "c_logging/logger.h"
 #include "c_logging/log_sink_console.h"
@@ -15,27 +16,95 @@
 
 namespace
 {
-void ensureLoggerConfigured()
-{
-    static bool loggerConfigured = false;
+    FILE* debugLogFile = NULL;
 
-    if (loggerConfigured) {
-        return;
+    int debugFileSinkInit()
+    {
+        const char* path = std::getenv("UAMQP_DEBUG_FILE");
+        if (path == NULL || path[0] == '\0')
+        {
+            return -1;
+        }
+
+        debugLogFile = std::fopen(path, "a");
+        return debugLogFile == NULL ? -1 : 0;
     }
 
-    if (logger_init() != 0) {
-        throw Php::Exception("Could not initialize logger");
+    void debugFileSinkLog(LOG_LEVEL, LOG_CONTEXT_HANDLE, const char* file, const char* func,
+                          int line, const char* messageFormat, va_list args)
+    {
+        if (debugLogFile == NULL || messageFormat == NULL)
+        {
+            return;
+        }
+
+        std::fprintf(debugLogFile, "%s:%d %s: ", file == NULL ? "" : file, line,
+                     func == NULL ? "" : func);
+        std::vfprintf(debugLogFile, messageFormat, args);
+        std::fputc('\n', debugLogFile);
+        std::fflush(debugLogFile);
     }
 
-    static const LOG_SINK_IF *sinks[] = { &log_sink_console };
-    LOGGER_CONFIG config = { 1, sinks };
-    logger_set_config(config);
+    void debugFileSinkDeinit()
+    {
+        if (debugLogFile != NULL)
+        {
+            std::fclose(debugLogFile);
+            debugLogFile = NULL;
+        }
+    }
 
-    loggerConfigured = true;
-}
+    const LOG_SINK_IF debugFileSink = {
+        debugFileSinkInit,
+        debugFileSinkLog,
+        debugFileSinkDeinit
+    };
+
+    void ensureLoggerConfigured()
+    {
+        static bool loggerConfigured = false;
+
+        if (loggerConfigured)
+        {
+            return;
+        }
+
+        const char* debugFilePath = std::getenv("UAMQP_DEBUG_FILE");
+        const LOG_SINK_IF* sink = &log_sink_console;
+        if (debugFilePath != NULL && debugFilePath[0] != '\0')
+        {
+            sink = &debugFileSink;
+        }
+
+        static const LOG_SINK_IF* sinks[1];
+        sinks[0] = sink;
+        LOGGER_CONFIG config = {1, sinks};
+        logger_set_config(config);
+
+        if (logger_init() != 0)
+        {
+            if (sink == &debugFileSink)
+            {
+                std::printf("Could not open UAMQP_DEBUG_FILE '%s'; using standard output\n",
+                            debugFilePath);
+                sinks[0] = &log_sink_console;
+                logger_set_config(config);
+                if (logger_init() != 0)
+                {
+                    throw Php::Exception("Could not initialize logger");
+                }
+            }
+            else
+            {
+                throw Php::Exception("Could not initialize logger");
+            }
+        }
+
+        loggerConfigured = true;
+    }
 }
 
-void Connection::__construct(Php::Parameters &params)
+void Connection::__construct(Php::Parameters& params)
 {
     port = 0;
     useTls = false;
@@ -52,12 +121,12 @@ void Connection::__construct(Php::Parameters &params)
     sasl_mechanism_handle = NULL;
     tls_io = NULL;
 
-    host    = params[0].stringValue();
-    port    = params[1].numericValue();
-    useTls  = params[2].boolValue();
+    host = params[0].stringValue();
+    port = params[1].numericValue();
+    useTls = params[2].boolValue();
     keyName = params[3].stringValue();
-    key     = params[4].stringValue();
-    debug   = params.size() == 6 ? params[5].boolValue() : false;
+    key = params[4].stringValue();
+    debug = params.size() == 6 ? params[5].boolValue() : false;
 }
 
 Connection::Connection()
@@ -80,16 +149,20 @@ Connection::Connection()
 
 Connection::~Connection()
 {
-    try {
+    try
+    {
         close();
-    } catch (...) {
+    }
+    catch (...)
+    {
         // Destructors must never throw during PHP shutdown.
     }
 }
 
 void Connection::connect()
 {
-    if (isConnected) {
+    if (isConnected)
+    {
         return;
     }
 
@@ -97,34 +170,45 @@ void Connection::connect()
 
     bool useAuth = !keyName.empty() && !key.empty();
 
-    if (debug) {
+    if (debug)
+    {
         ensureLoggerConfigured();
     }
 
-    if (platform_init() == 0) {
+    if (platform_init() == 0)
+    {
         platformInitialized = true;
-    } else {
+    }
+    else
+    {
         //throw Php::Exception("Could not run platform_init");
     }
 
-    if (useTls) {
-        tls_io_config = { host.c_str(), port };
+    if (useTls)
+    {
+        tls_io_config = {host.c_str(), port};
         /* create the TLS IO */
         tlsio_interface = platform_get_default_tlsio();
         tls_io = xio_create(tlsio_interface, &tls_io_config);
-    } else {
-        socketio_config = { host.c_str(), port, NULL };
+    }
+    else
+    {
+        socketio_config = {host.c_str(), port, NULL};
         socket_io = xio_create(socketio_get_interface_description(), &socketio_config);
     }
 
-    if (useAuth) {
-        sasl_plain_config = { keyName.c_str(), key.c_str(), NULL };
+    if (useAuth)
+    {
+        sasl_plain_config = {keyName.c_str(), key.c_str(), NULL};
         /* create SASL PLAIN handler */
         sasl_mechanism_handle = saslmechanism_create(saslplain_get_interface(), &sasl_plain_config);
         /* create the SASL client IO using the TLS IO or SOCKET OI */
-        if (useTls) {
+        if (useTls)
+        {
             sasl_io_config.underlying_io = tls_io;
-        } else {
+        }
+        else
+        {
             sasl_io_config.underlying_io = socket_io;
         }
         sasl_io_config.sasl_mechanism = sasl_mechanism_handle;
@@ -133,10 +217,12 @@ void Connection::connect()
 
     /* create the connection */
     connection = connection_create(useAuth ? sasl_io : socket_io, host.c_str(), "some", NULL, NULL);
-    if (connection == NULL) {
+    if (connection == NULL)
+    {
         throw Php::Exception("Could not create connection");
     }
-    if (isDebugOn()) {
+    if (isDebugOn())
+    {
         connection_set_trace(connection, true);
     }
 
@@ -146,18 +232,18 @@ void Connection::connect()
     isConnected = true;
 }
 
-void Connection::publish(Php::Parameters &params)
+void Connection::publish(Php::Parameters& params)
 {
     connect();
 
     std::string resourceName = params[0].stringValue();
-    Message *message = (Message*) params[1].implementation();
+    Message* message = (Message*)params[1].implementation();
 
     Producer producer(session, resourceName);
     producer.publish(message);
 }
 
-void Connection::setCallback(Php::Parameters &params)
+void Connection::setCallback(Php::Parameters& params)
 {
     connect();
 
@@ -171,7 +257,8 @@ void Connection::setCallback(Php::Parameters &params)
 
 void Connection::consume()
 {
-    if (consumer != NULL && !consumer->wasCloseRequested()) {
+    if (consumer != NULL && !consumer->wasCloseRequested())
+    {
         consumer->consume();
     }
 }
@@ -193,7 +280,8 @@ CONNECTION_HANDLE Connection::getConnectionHandler()
 
 void Connection::doWork()
 {
-    if (connection != NULL) {
+    if (connection != NULL)
+    {
         connection_dowork(connection);
     }
 }
@@ -207,43 +295,56 @@ void Connection::close()
 {
     std::string closeError;
 
-    if (closeRequested) {
+    if (closeRequested)
+    {
         return;
     }
 
     closeRequested = true;
 
-    if (consumer != NULL && !consumer->wasCloseRequested()) {
-        try {
+    if (consumer != NULL && !consumer->wasCloseRequested())
+    {
+        try
+        {
             consumer->close();
-        } catch (const std::exception &e) {
+        }
+        catch (const std::exception& e)
+        {
             closeError = e.what();
-        } catch (...) {
+        }
+        catch (...)
+        {
             closeError = "Unknown consumer shutdown error";
         }
     }
 
-    if (session != NULL) {
+    if (session != NULL)
+    {
         session->close();
     }
 
-    if (connection != NULL) {
+    if (connection != NULL)
+    {
         connection_destroy(connection);
         connection = NULL;
     }
-    if (sasl_io != NULL) {
+    if (sasl_io != NULL)
+    {
         xio_destroy(sasl_io);
         sasl_io = NULL;
     }
-    if (tls_io != NULL) {
+    if (tls_io != NULL)
+    {
         xio_destroy(tls_io);
         tls_io = NULL;
     }
-    if (sasl_mechanism_handle != NULL) {
+    if (sasl_mechanism_handle != NULL)
+    {
         saslmechanism_destroy(sasl_mechanism_handle);
         sasl_mechanism_handle = NULL;
     }
-    if (platformInitialized) {
+    if (platformInitialized)
+    {
         platform_deinit();
         platformInitialized = false;
     }
@@ -253,7 +354,8 @@ void Connection::close()
     consumer = NULL;
 
 
-    if (!closeError.empty()) {
+    if (!closeError.empty())
+    {
         throw Php::Exception(closeError);
     }
 }
