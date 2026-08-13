@@ -30,7 +30,7 @@ namespace
         return debugLogFile == NULL ? -1 : 0;
     }
 
-    void debugFileSinkLog(LOG_LEVEL, LOG_CONTEXT_HANDLE, const char* file, const char* func,
+    void debugFileSinkLog(LOG_LEVEL logLevel, LOG_CONTEXT_HANDLE, const char* file, const char* func,
                           int line, const char* messageFormat, va_list args)
     {
         if (debugLogFile == NULL || messageFormat == NULL)
@@ -38,7 +38,9 @@ namespace
             return;
         }
 
-        std::fprintf(debugLogFile, "%s:%d %s: ", file == NULL ? "" : file, line,
+        std::fprintf(debugLogFile, "%s%s:%d %s: ",
+                     logLevel == LOG_LEVEL_VERBOSE ? "[DEBUG] " : "",
+                     file == NULL ? "" : file, line,
                      func == NULL ? "" : func);
         std::vfprintf(debugLogFile, messageFormat, args);
         std::fputc('\n', debugLogFile);
