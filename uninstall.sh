@@ -3,6 +3,8 @@ set -euo pipefail
 
 export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 PHP_MAJOR_VERSION="8.3"
 if [ -n "${PHUAMQP_PHP_MAJOR_VERSION:-}" ]; then
     PHP_MAJOR_VERSION="${PHUAMQP_PHP_MAJOR_VERSION}"
@@ -93,6 +95,10 @@ done
 for extension_name in "${EXTENSION_NAMES[@]}"; do
     remove_file_if_exists "${PHP_EXTENSION_DIR}/${extension_name}"
 done
+
+while IFS= read -r build_artifact; do
+    remove_file_if_exists "${build_artifact}"
+done < <(find "${SCRIPT_DIR}" -maxdepth 1 -type f \( -name "*.o" -o -name "uamqpphpbinding.so" \) -print)
 
 echo "============================================================================="
 echo "✓ Azure uAMQP PHP Extension removed"
