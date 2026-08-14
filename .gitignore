@@ -1,4 +1,6 @@
 *.o
 *.so
 examples/parameters.php
+debugging/build
 .idea
+libs-build

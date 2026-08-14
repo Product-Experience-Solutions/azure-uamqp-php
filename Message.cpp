@@ -1,4 +1,29 @@
 #include "Message.h"
+#include <cstdlib>
+
+static const char* body_type_name(MESSAGE_BODY_TYPE body_type)
+{
+    switch (body_type) {
+        case MESSAGE_BODY_TYPE_NONE: return "none";
+        case MESSAGE_BODY_TYPE_DATA: return "data";
+        case MESSAGE_BODY_TYPE_VALUE: return "value";
+        case MESSAGE_BODY_TYPE_SEQUENCE: return "sequence";
+        default: return "unknown";
+    }
+}
+
+static std::string amqp_value_to_string_checked(AMQP_VALUE value)
+{
+    char* value_string = amqpvalue_to_string(value);
+    if (value_string == NULL) {
+        throw Php::Exception("Could not stringify AMQP message body");
+    }
+
+    std::string result(value_string);
+    std::free(value_string);
+    return result;
+}
+
 static void add_map_item(AMQP_VALUE map, const char* name, AMQP_VALUE amqp_value_value)
 {
     AMQP_VALUE amqp_value_name = amqpvalue_create_symbol(name);
@@ -52,7 +77,11 @@ static void add_amqp_message_annotation(MESSAGE_HANDLE message, AMQP_VALUE msg_a
     annotations_destroy(msg_annotations);
 }
 
-Message::Message()
+Message::Message() :
+    message(NULL),
+    application_properties(NULL),
+    annotations_map(NULL),
+    binary_data{}
 {
     message = message_create();
 
@@ -70,19 +99,92 @@ void Message::__construct(Php::Parameters &params)
 
 Php::Value Message::getBody()
 {
-    if (body.empty()) {
-        message_get_body_amqp_data_in_place(message, 0, &binary_data);
-        for (size_t i = 0; i < binary_data.length; ++i) {
-            body += binary_data.bytes[i];
-        }
+    if (bodyDecoded) {
+        return body;
+    }
+    if (message == NULL) {
+        throw Php::Exception("Message body is not available");
     }
 
+    MESSAGE_BODY_TYPE body_type = MESSAGE_BODY_TYPE_NONE;
+    if (message_get_body_type(message, &body_type) != 0) {
+        throw Php::Exception("Could not determine AMQP message body type");
+    }
+
+    body.clear();
+    binary_data = {};
+
+    switch (body_type) {
+        case MESSAGE_BODY_TYPE_NONE:
+            break;
+        case MESSAGE_BODY_TYPE_DATA: {
+            size_t data_count = 0;
+            if (message_get_body_amqp_data_count(message, &data_count) != 0) {
+                throw Php::Exception("Could not determine AMQP data body count");
+            }
+            for (size_t index = 0; index < data_count; ++index) {
+                BINARY_DATA data = {};
+                if (message_get_body_amqp_data_in_place(message, index, &data) != 0) {
+                    throw Php::Exception("Could not decode AMQP data message body");
+                }
+                if (data.bytes != NULL && data.length > 0) {
+                    body.append(reinterpret_cast<const char*>(data.bytes), data.length);
+                }
+            }
+            break;
+        }
+        case MESSAGE_BODY_TYPE_VALUE: {
+            AMQP_VALUE value = NULL;
+            if (message_get_body_amqp_value_in_place(message, &value) != 0 || value == NULL) {
+                throw Php::Exception("Could not decode AMQP value message body");
+            }
+            body = amqp_value_to_string_checked(value);
+            break;
+        }
+        case MESSAGE_BODY_TYPE_SEQUENCE: {
+            size_t sequence_count = 0;
+            if (message_get_body_amqp_sequence_count(message, &sequence_count) != 0) {
+                throw Php::Exception("Could not determine AMQP sequence body count");
+            }
+            for (size_t index = 0; index < sequence_count; ++index) {
+                AMQP_VALUE sequence = NULL;
+                if (message_get_body_amqp_sequence_in_place(message, index, &sequence) != 0 ||
+                    sequence == NULL) {
+                    throw Php::Exception("Could not decode AMQP sequence message body");
+                }
+                if (index > 0) {
+                    body += "\n";
+                }
+                body += amqp_value_to_string_checked(sequence);
+            }
+            break;
+        }
+        default:
+            throw Php::Exception("Unsupported AMQP message body type");
+    }
+
+    bodyDecoded = true;
     return body;
+}
+
+Php::Value Message::getBodyType()
+{
+    if (message == NULL) {
+        throw Php::Exception("Message body type is not available");
+    }
+
+    MESSAGE_BODY_TYPE body_type = MESSAGE_BODY_TYPE_NONE;
+    if (message_get_body_type(message, &body_type) != 0) {
+        throw Php::Exception("Could not determine AMQP message body type");
+    }
+
+    return body_type_name(body_type);
 }
 
 void Message::setBody(std::string body)
 {
     this->body = body;
+    bodyDecoded = true;
 
     bodyBytes.assign(body.begin(), body.end());
     binary_data.bytes = bodyBytes.empty() ? NULL : bodyBytes.data();
@@ -125,4 +227,7 @@ MESSAGE_HANDLE Message::getMessageHandler()
 void Message::setMessageHandler(MESSAGE_HANDLE message)
 {
     this->message = message;
+    body.clear();
+    bodyDecoded = false;
+    binary_data = {};
 }

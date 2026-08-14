@@ -19,7 +19,7 @@
 export DEBIAN_FRONTEND="noninteractive"
 export UAMQP_EXT_DIR
 export PHP_MAJOR_VERSION="8.3"
-export PHP_CPP_VERSION="2.4.1"
+export PHP_CPP_VERSION="2.4.16"
 
 UAMQP_EXT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -n "${PHUAMQP_PHP_MAJOR_VERSION:-}" ]; then
@@ -491,11 +491,11 @@ fi
 # Check if PHP loads the extension
 echo ""
 echo "3. PHP extension loading check:"
-if php${PHP_MAJOR_VERSION} -m 2>&1 | grep -qi "uamqp"; then
+if php${PHP_MAJOR_VERSION} -m 2>&1 | grep -qi "uamqpphpbinding"; then
     echo "   ✓✓✓ SUCCESS: uAMQP extension is loaded in PHP!"
     echo ""
     echo "   Extension details:"
-    php${PHP_MAJOR_VERSION} -r "if (extension_loaded('uamqp')) { echo 'Extension: uamqp' . PHP_EOL; echo 'Status: LOADED' . PHP_EOL; } else { echo 'Not loaded' . PHP_EOL; }"
+    php${PHP_MAJOR_VERSION} -r "if (extension_loaded('uamqpphpbinding')) { echo 'Extension: uamqpphpbinding' . PHP_EOL; echo 'Status: LOADED' . PHP_EOL; } else { echo 'Not loaded' . PHP_EOL; }"
 else
     echo "   ✗ ERROR: uAMQP extension is NOT loaded"
     echo ""
@@ -512,11 +512,11 @@ fi
 # ============================================================================
 # Cleanup
 # ============================================================================
-echo ""
-echo "=== Cleanup ==="
-echo "Removing temporary build files..."
-rm -rf "${UAMQP_LIBS_BUILD_DIR}"
-echo "✓ Cleanup completed"
+echo "Cleanup skipped...."
+#echo "=== Cleanup ==="
+#echo "Removing temporary build files..."
+#rm -rf "${UAMQP_LIBS_BUILD_DIR}"
+#echo "✓ Cleanup completed"
 
 echo ""
 echo "============================================================================="

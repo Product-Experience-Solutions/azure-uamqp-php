@@ -28,11 +28,12 @@ try {
     $conn->setCallback(
         PHUAMQP_QUEUE_NAME,
         function (Message $message) use (&$messageCount, &$receivedBodies) {
+            $bodyType = $message->getBodyType();
             $body = $message->getBody();
             $receivedBodies[] = $body;
             $messageCount++;
 
-            echo sprintf("✓ Message %d received: %s\n", $messageCount, $body);
+            echo sprintf("✓ Message %d received (%s): %s\n", $messageCount, $bodyType, $body);
 
             $payload = json_decode($body, true, 512, JSON_THROW_ON_ERROR);
             if (($payload['source'] ?? null) !== 'phuamqp-producer') {
@@ -81,4 +82,3 @@ try {
     echo "\n✗ ERROR: " . $e->getMessage() . "\n";
     exit(1);
 }
-

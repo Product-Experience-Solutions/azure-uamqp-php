@@ -102,3 +102,76 @@ sudo bash setup.sh
 - It installs packages via `apt-get` and therefore must be run as `root` or with `sudo`.
 - It creates and later removes the temporary `libs-build` directory after a successful run.
 
+## Debug logging
+
+When a connection is created with debug mode enabled, uAMQP logs are written to standard output.
+Set `UAMQP_DEBUG_FILE` to append those logs to a file instead:
+
+```bash
+export UAMQP_DEBUG_FILE=/var/log/uamqp-debug.log
+```
+
+If the file cannot be opened for writing, the extension reports the error on standard output and
+continues logging to standard output.
+
+## Subscription debugging command
+
+The repository includes a standalone C++ diagnostic consumer in `debugging/`. It accepts the
+same AMQP resource forms used by the extension, including topic subscriptions:
+
+```text
+amqps://host:5671/topic/Subscriptions/subscription?verify=verify_none
+host:5671/queue
+host:5671/topic
+USER:PASSWORD@host:5671/topic/Subscriptions/subscription
+```
+
+Build it after the dependencies have been prepared by `setup.sh`:
+
+```bash
+make -C debugging
+```
+
+Pass credentials without putting them in shell history or source control where possible:
+
+```bash
+export UAMQP_ENDPOINT='amqps://host:5671/topic/Subscriptions/subscription?verify=verify_none'
+export UAMQP_USER='RootManageSharedAccessKey'
+export UAMQP_PASSWORD='service-bus-key'
+debugging/build/subscription_consumer --count 2 --timeout 60
+```
+
+The endpoint query string is ignored for transport setup; TLS remains enabled for the diagnostic
+command. The command enables uAMQP frame tracing and prints connection, receiver, detach, error,
+and message logs. Binary AMQP data bodies are printed to standard output; non-binary bodies are
+reported without attempting an unsafe binary conversion.
+
+Credentials may be supplied as `USER:PASSWORD@HOST` in the endpoint or through `UAMQP_USER` and
+`UAMQP_PASSWORD`. Percent-encoded credential bytes (for example `%2B` and `%3D` in a base64 key)
+are decoded before SASL authentication. Do not place credentials in committed scripts or logs.
+
+If DNS resolution shows a hostname containing `USER:PASSWORD@`, the endpoint was parsed
+incorrectly and must use the supported user-info form above or separate credential variables. If
+the connection reaches `OPENED` but the receiver is detached with `amqp:unauthorized-access`, the
+endpoint is valid but the decoded SASL identity/key does not have receive permission for the
+specified entity, or the key belongs to a different namespace. Use a namespace-matching SAS policy
+with Listen permission on the queue or topic subscription and retry.
+
+Exit status `0` means the requested messages were consumed, `1` means a receive or transport
+failure occurred before the requested count, and `2` means command-line validation failed.
+The command does not change the PHP extension's queue/topic resource handling, so existing
+non-subscription paths remain available for regression checks.
+
+## Message body types
+
+`Azure\uAMQP\Message::getBody()` safely handles all uAMQP body sections:
+
+- `data` sections are concatenated as a PHP string, including messages with multiple sections.
+- `value` sections are returned using uAMQP's safe string representation.
+- `sequence` sections are returned as newline-separated safe string representations.
+- `none` returns an empty string.
+
+`Message::getBodyType()` returns `data`, `value`, `sequence`, or `none`. Body decoding errors raise
+a PHP exception instead of calling a data-only decoder and risking a process crash. The consumer
+regression scripts print the body type for every received message; use them with messages produced
+by systems that emit `amqp-value` or `amqp-sequence` bodies to validate interoperability.
