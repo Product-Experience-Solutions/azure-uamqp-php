@@ -2,6 +2,11 @@
 #include <exception>
 #include <cstdlib>
 #include <cstdio>
+#include <chrono>
+#include <limits>
+#include <sstream>
+#include <iomanip>
+#include <unistd.h>
 #include "c_logging/logger.h"
 #include "c_logging/log_sink_console.h"
 #include "azure_c_shared_utility/platform.h"
@@ -17,6 +22,18 @@
 namespace
 {
     FILE* debugLogFile = NULL;
+    unsigned long connectionSequence = 0;
+
+    long long timestampMilliseconds()
+    {
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+    }
+
+    void onIoError(void *context)
+    {
+        static_cast<Connection *>(context)->handleIoError();
+    }
 
     int debugFileSinkInit()
     {
@@ -38,7 +55,8 @@ namespace
             return;
         }
 
-        std::fprintf(debugLogFile, "%s%s:%d %s: ",
+        std::fprintf(debugLogFile, "ts=%lld pid=%ld %s%s:%d %s: ",
+                     timestampMilliseconds(), static_cast<long>(getpid()),
                      logLevel == LOG_LEVEL_VERBOSE ? "[DEBUG] " : "",
                      file == NULL ? "" : file, line,
                      func == NULL ? "" : func);
@@ -163,19 +181,23 @@ Connection::~Connection()
 
 void Connection::connect()
 {
+    if (doingWork || receiverRunActive) {
+        throw Php::Exception("Cannot reconnect or create a link while a receiver callback loop is active");
+    }
     if (isConnected)
     {
         return;
     }
 
     closeRequested = false;
+    ioError = false;
+    connectionId = std::to_string(getpid()) + "-" + std::to_string(++connectionSequence);
 
     bool useAuth = !keyName.empty() && !key.empty();
 
-    if (debug)
-    {
-        ensureLoggerConfigured();
-    }
+    // c_logging aborts on every log call before initialization, including errors
+    // when tracing is disabled. Debug controls wire tracing, not logger lifetime.
+    ensureLoggerConfigured();
 
     if (platform_init() == 0)
     {
@@ -218,7 +240,9 @@ void Connection::connect()
     }
 
     /* create the connection */
-    connection = connection_create(useAuth ? sasl_io : socket_io, host.c_str(), "some", NULL, NULL);
+    XIO_HANDLE transport = useAuth ? sasl_io : (useTls ? tls_io : socket_io);
+    connection = connection_create2(transport, host.c_str(), connectionId.c_str(), NULL, NULL,
+        NULL, NULL, onIoError, this);
     if (connection == NULL)
     {
         throw Php::Exception("Could not create connection");
@@ -247,19 +271,50 @@ void Connection::publish(Php::Parameters& params)
 
 void Connection::setCallback(Php::Parameters& params)
 {
+    uint32_t maxLinkCredit = 0;
+    if (params.size() > 3) {
+        int64_t requestedCredit = params[3].numericValue();
+        if (requestedCredit < 1 || static_cast<uint64_t>(requestedCredit) > std::numeric_limits<uint32_t>::max()) {
+            throw Php::Exception("maxLinkCredit must be between 1 and 4294967295; omit it for continuous consumption");
+        }
+        maxLinkCredit = static_cast<uint32_t>(requestedCredit);
+    }
     connect();
 
     std::string resourceName = params[0].stringValue();
     Php::Value callback = params[1];
     Php::Value loopFn = params[2];
 
-    consumer = new Consumer(session, resourceName);
-    consumer->setCallback(callback, loopFn);
+    if (consumer != NULL) {
+        consumer->close();
+        delete consumer;
+        consumer = NULL;
+    }
+    consumer = new Consumer(session, resourceName, maxLinkCredit);
+    receiverRunActive = true;
+    try {
+        consumer->setCallback(callback, loopFn);
+    } catch (...) {
+        receiverRunActive = false;
+        // Preserve the original callback/loop exception even if cleanup also fails.
+        try {
+            close();
+        } catch (...) {
+        }
+        throw;
+    }
+    receiverRunActive = false;
+    if (closeRequested) {
+        close();
+    }
 }
 
 void Connection::consume()
 {
-    if (consumer != NULL && !consumer->wasCloseRequested())
+    if (doingWork) {
+        throw Php::Exception("Cannot recursively consume from a message callback");
+    }
+    if (consumer != NULL)
     {
         consumer->consume();
     }
@@ -282,9 +337,19 @@ CONNECTION_HANDLE Connection::getConnectionHandler()
 
 void Connection::doWork()
 {
+    if (doingWork) {
+        throw Php::Exception("Cannot recursively dispatch AMQP I/O");
+    }
     if (connection != NULL)
     {
-        connection_dowork(connection);
+        doingWork = true;
+        try {
+            connection_dowork(connection);
+        } catch (...) {
+            doingWork = false;
+            throw;
+        }
+        doingWork = false;
     }
 }
 
@@ -296,19 +361,27 @@ bool Connection::isDebugOn()
 void Connection::close()
 {
     std::string closeError;
-
-    if (closeRequested)
+    std::exception_ptr closeException;
+    closeRequested = true;
+    if (consumer != NULL) {
+        consumer->requestStop("connection-close");
+    }
+    // The receive callback runs inside connection_dowork. Its stack still borrows
+    // the link/session/transport until dispatch returns.
+    if (doingWork || receiverRunActive || closing)
     {
         return;
     }
-
-    closeRequested = true;
-
-    if (consumer != NULL && !consumer->wasCloseRequested())
+    closing = true;
+    if (consumer != NULL)
     {
         try
         {
             consumer->close();
+        }
+        catch (Php::Throwable& e)
+        {
+            closeException = std::current_exception();
         }
         catch (const std::exception& e)
         {
@@ -318,11 +391,15 @@ void Connection::close()
         {
             closeError = "Unknown consumer shutdown error";
         }
+        delete consumer;
+        consumer = NULL;
     }
 
     if (session != NULL)
     {
         session->close();
+        delete session;
+        session = NULL;
     }
 
     if (connection != NULL)
@@ -340,6 +417,10 @@ void Connection::close()
         xio_destroy(tls_io);
         tls_io = NULL;
     }
+    if (socket_io != NULL) {
+        xio_destroy(socket_io);
+        socket_io = NULL;
+    }
     if (sasl_mechanism_handle != NULL)
     {
         saslmechanism_destroy(sasl_mechanism_handle);
@@ -352,12 +433,87 @@ void Connection::close()
     }
 
     isConnected = false;
+    closing = false;
     session = NULL;
     consumer = NULL;
 
 
+    if (closeException)
+    {
+        std::rethrow_exception(closeException);
+    }
     if (!closeError.empty())
     {
         throw Php::Exception(closeError);
     }
+}
+
+bool Connection::isDoingWork() const
+{
+    return doingWork;
+}
+
+bool Connection::hasIoError() const
+{
+    return ioError;
+}
+
+void Connection::handleIoError()
+{
+    ioError = true;
+    if (consumer != NULL) {
+        consumer->handleCallbackException("AMQP transport I/O failed");
+    }
+}
+
+std::string Connection::quote(const std::string &value)
+{
+    std::ostringstream output;
+    output << '"';
+    for (size_t index = 0; index < value.size(); ++index) {
+        unsigned char character = value[index];
+        if (character == '"' || character == '\\') {
+            output << '\\' << character;
+        } else if (character >= 0x80) {
+            // Keep valid UTF-8 IDs unchanged, escaping malformed/binary bytes.
+            size_t length = character >= 0xc2 && character <= 0xdf ? 2 :
+                (character >= 0xe0 && character <= 0xef ? 3 :
+                (character >= 0xf0 && character <= 0xf4 ? 4 : 0));
+            bool valid = length != 0 && index + length <= value.size();
+            for (size_t offset = 1; valid && offset < length; ++offset) {
+                unsigned char next = value[index + offset];
+                valid = next >= 0x80 && next <= 0xbf;
+                if (offset == 1) {
+                    valid = valid && !(character == 0xe0 && next < 0xa0) &&
+                        !(character == 0xed && next >= 0xa0) && !(character == 0xf0 && next < 0x90) &&
+                        !(character == 0xf4 && next >= 0x90);
+                }
+            }
+            if (valid) {
+                output.write(value.data() + index, length);
+                index += length - 1;
+            } else {
+                output << "\\u00" << std::hex << std::setw(2) << std::setfill('0') << static_cast<unsigned int>(character);
+            }
+        } else if (character < 0x20) {
+            output << "\\u00" << std::hex << std::setw(2) << std::setfill('0') << static_cast<unsigned int>(character);
+        } else {
+            output << character;
+        }
+    }
+    output << '"';
+    return output.str();
+}
+
+void Connection::trace(const std::string &event, const std::string &fields) const
+{
+    if (!debug) {
+        return;
+    }
+    FILE *destination = debugLogFile == NULL ? stderr : debugLogFile;
+    const std::string record = "{\"timestampMs\":" + std::to_string(timestampMilliseconds()) +
+        ",\"pid\":" + std::to_string(getpid()) + ",\"connection\":" + quote(connectionId) +
+        ",\"event\":" + quote(event) + (fields.empty() ? "" : "," + fields) + "}";
+    std::fprintf(destination, "%s\n", record.c_str());
+    std::fflush(destination);
 }

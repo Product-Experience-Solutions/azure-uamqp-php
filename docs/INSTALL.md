@@ -12,7 +12,7 @@ At a high level, `setup.sh`:
 4. Installs required Debian packages.
 5. Builds and installs:
    - Azure C Shared Utility
-   - Azure uAMQP C
+   - Azure uAMQP C, with this extension's required receiver-credit patch
    - PHP-CPP
 6. Builds the PHP extension.
 7. Installs and enables the extension.
@@ -50,6 +50,14 @@ Example:
 ```bash
 export PHUAMQP_PHP_MAJOR_VERSION=8.3
 ```
+
+### `PHUAMQP_LIBS_BUILD_DIR`
+
+Optional directory for dependency checkouts and builds; defaults to `libs-build`
+inside the extension source directory. The uAMQP patch is applied from the
+extension's tracked `patches` directory before compiling this dependency. See
+[receiver-credit patch details](../patches/README.md) when upgrading an existing
+uAMQP installation. Rebuild both the dependency and extension together.
 
 ### `PHUAMQP_PHP_CPP_VERSION`
 

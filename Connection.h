@@ -22,6 +22,11 @@ private:
     bool isConnected = false;
     bool closeRequested = false;
     bool platformInitialized = false;
+    bool doingWork = false;
+    bool receiverRunActive = false;
+    bool closing = false;
+    bool ioError = false;
+    std::string connectionId;
 
     Session *session = NULL;
     Consumer *consumer = NULL;
@@ -54,6 +59,11 @@ public:
     CONNECTION_HANDLE getConnectionHandler();
     void doWork();
     bool isDebugOn();
+    bool isDoingWork() const;
+    bool hasIoError() const;
+    void handleIoError();
+    void trace(const std::string &event, const std::string &fields = "") const;
+    static std::string quote(const std::string &value);
 };
 
 #endif

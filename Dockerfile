@@ -22,6 +22,6 @@ RUN apt-get update \
 
 WORKDIR /workspace
 COPY . /workspace
-RUN /bin/bash /workspace/setup.sh
+RUN /bin/bash /workspace/setup.sh && make test-credit
 
 CMD ["/bin/bash", "-lc", "sleep infinity"]

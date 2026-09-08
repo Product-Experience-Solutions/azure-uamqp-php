@@ -1,7 +1,10 @@
 *.o
+*.d
 *.so
 examples/parameters.php
 debugging/build
 .idea
 libs-build
 tests/amqp-value-body-decoder-test
+tests/amqp-value-decoder-test
+tests/link-receiver-credit-test
