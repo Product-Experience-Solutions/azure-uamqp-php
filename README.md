@@ -36,6 +36,11 @@ The script automates the complete build and install process:
 
 The supported environment variables and their defaults are documented in [`INSTALL.md`](./docs/INSTALL.md).
 
+## Releasing
+
+Edit [VERSION](VERSION) to change the extension and Debian package version together. See the
+[release guide](docs/RELEASING.md) for verification and tagging steps.
+
 ## Notes
 
 - Run the script with `sudo` or as `root` because it installs packages and writes to system directories.

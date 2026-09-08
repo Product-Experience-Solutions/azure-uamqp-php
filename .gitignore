@@ -4,3 +4,4 @@ examples/parameters.php
 debugging/build
 .idea
 libs-build
+tests/amqp-value-body-decoder-test

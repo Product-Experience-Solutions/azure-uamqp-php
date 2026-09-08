@@ -1,5 +1,6 @@
 #include "Message.h"
-#include <cstdlib>
+#include "AmqpValueBodyDecoder.h"
+#include <exception>
 
 static const char* body_type_name(MESSAGE_BODY_TYPE body_type)
 {
@@ -12,16 +13,13 @@ static const char* body_type_name(MESSAGE_BODY_TYPE body_type)
     }
 }
 
-static std::string amqp_value_to_string_checked(AMQP_VALUE value)
+static std::string decode_amqp_value_body_checked(AMQP_VALUE value)
 {
-    char* value_string = amqpvalue_to_string(value);
-    if (value_string == NULL) {
-        throw Php::Exception("Could not stringify AMQP message body");
+    try {
+        return decode_amqp_value_body(value);
+    } catch (const std::exception &error) {
+        throw Php::Exception(error.what());
     }
-
-    std::string result(value_string);
-    std::free(value_string);
-    return result;
 }
 
 static void add_map_item(AMQP_VALUE map, const char* name, AMQP_VALUE amqp_value_value)
@@ -138,7 +136,7 @@ Php::Value Message::getBody()
             if (message_get_body_amqp_value_in_place(message, &value) != 0 || value == NULL) {
                 throw Php::Exception("Could not decode AMQP value message body");
             }
-            body = amqp_value_to_string_checked(value);
+            body = decode_amqp_value_body_checked(value);
             break;
         }
         case MESSAGE_BODY_TYPE_SEQUENCE: {
@@ -155,7 +153,7 @@ Php::Value Message::getBody()
                 if (index > 0) {
                     body += "\n";
                 }
-                body += amqp_value_to_string_checked(sequence);
+                body += decode_amqp_value_body_checked(sequence);
             }
             break;
         }

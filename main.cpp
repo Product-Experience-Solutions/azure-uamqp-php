@@ -5,11 +5,15 @@
 #include "Connection.h"
 #include "Message.h"
 
+#ifndef PHUAMQP_VERSION
+#error "PHUAMQP_VERSION must be supplied by the build from VERSION"
+#endif
+
 extern "C" {
 
     PHPCPP_EXPORT void *get_module()
     {
-        static Php::Extension extension("uamqpphpbinding", "0.2.3");
+        static Php::Extension extension("uamqpphpbinding", PHUAMQP_VERSION);
 
         Php::Class<Connection> connection("Azure\\uAMQP\\Connection");
         connection.method<&Connection::__construct>("__construct", {
