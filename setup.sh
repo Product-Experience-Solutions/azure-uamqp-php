@@ -28,7 +28,7 @@ fi
 if [ -n "${PHUAMQP_PHP_CPP_VERSION:-}" ]; then
     PHP_CPP_VERSION="${PHUAMQP_PHP_CPP_VERSION}"
 fi
-export UAMQP_LIBS_BUILD_DIR="${UAMQP_EXT_DIR}/libs-build"
+export UAMQP_LIBS_BUILD_DIR="${PHUAMQP_LIBS_BUILD_DIR:-${UAMQP_EXT_DIR}/libs-build}"
 
 echo "============================================================================="
 echo "Starting Azure uAMQP C + PHP Extension Build"
@@ -158,6 +158,8 @@ else
     fi
     echo "✓ Repository cloned"
 fi
+
+bash "${UAMQP_EXT_DIR}/scripts/apply-uamqp-patches.sh" "${UAMQP_LIBS_BUILD_DIR}/azure-uamqp-c" || exit 1
 
 mkdir -p cmake
 cd cmake || exit 1
@@ -524,5 +526,8 @@ echo "✓✓✓ Azure uAMQP PHP Extension Installation SUCCESS ✓✓✓"
 echo "============================================================================="
 echo "Extension: ${EXTENSION_NAME}"
 echo "Location: ${PHP_EXT_DIR}/"
-echo "Status: LOADED in PHP ${PHP_MAJOR_VERSION}"
+echo "Status: LOADED in a new PHP ${PHP_MAJOR_VERSION} CLI process"
+echo "Restart PHP-FPM and long-running PHP workers to load the installed libraries."
+echo "Existing FPM masters and their new child workers can still use the previous extension."
+echo "Verify phpversion('uamqpphpbinding') through the application after restarting."
 echo "============================================================================="

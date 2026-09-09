@@ -33,6 +33,7 @@ jobs:
         run: |
           docker compose build phuamqp
           docker compose up -d phuamqp-servicebus-emulator phuamqp-mssql
+          docker compose run --rm --no-deps phuamqp make test test-versioning
           docker compose run --rm --no-deps phuamqp /bin/bash /workspace/scripts/run-e2e.sh
 
       - name: Show compose logs on failure

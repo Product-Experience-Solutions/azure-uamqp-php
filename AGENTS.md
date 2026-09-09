@@ -2,6 +2,18 @@
 
 Guidance for AI coding agents working in this repository.
 
+## Planning and working agreements
+
+- For long tasks, significant refactors, changes across native and PHP layers, or substantial
+  unknowns, read [`.ai/PLANS.md`](.ai/PLANS.md) and create or continue an execution plan under
+  `.ai/projects/<project>/tasks/<task>.md`. Keep progress, decisions, validation evidence, and
+  the next action current across sessions. Small, straightforward edits need no separate plan.
+- Use [`.ai/README.md`](.ai/README.md) to find planning guidance and reference material.
+  Paths in these documents are relative to this extension repository, including in a
+  standalone checkout outside PXH.
+- Continue authorized implementation through its milestones and provide meaningful progress
+  updates. Do not commit work or publish releases without explicit user approval.
+
 ## Project overview
 
 `azure-uamqp-php` is a native **PHP extension** (`uamqpphpbinding`, module name `uamqp`)
@@ -46,20 +58,26 @@ Two build paths exist; **`setup.sh` is the primary/authoritative one** used in C
 - `CMakeLists.txt` exists but only builds a standalone `php_uamqp` executable from the sources;
   it is not the extension build path.
 
-There is no separate configure/build step for tests beyond the e2e flow — this is a compiled
-extension, not a typical app.
+The focused native decoder test is built separately with `make test`; the extension remains a
+compiled library rather than a typical app.
 
 ## Testing / verification
 
 - `quick-check.sh` — quick sanity check (`php --ri uamqpphpbinding`) after install.
+- `make test` — compiles and runs focused native regression coverage for AMQP value-body
+  decoding.
+- `make test-versioning` — builds and packages a temporary copy, verifies PHP and Debian
+  versions, and checks version-only incremental rebuilds and rejection of stale binaries.
+  Run it inside the `phuamqp` Docker environment.
 - End-to-end test: `scripts/run-e2e.sh`, driven via Docker Compose
   (`docker compose build phuamqp && docker compose up -d phuamqp-servicebus-emulator phuamqp-mssql`,
   then run the script inside the `phuamqp` container). It waits for the Service Bus emulator
   health endpoint, starts a consumer (`scripts/test-consumer.php`) then a producer
   (`scripts/test-producer.php`), and asserts the consumer receives the produced messages.
 - CI (`.github/workflows/e2e.yml`) runs this exact flow on every push/PR.
-- There is no unit test suite for the C++ code; validate changes by rebuilding the extension
-  and running the e2e flow (or `quick-check.sh` for a minimal smoke test).
+- Validate changes by rebuilding the extension, running `make test`, and running the e2e flow
+  when the changed behavior crosses the broker boundary (`quick-check.sh` is a minimal smoke
+  test).
 
 ## Conventions
 
@@ -84,7 +102,11 @@ extension, not a typical app.
 
 ## Packaging & release
 
+- [VERSION](VERSION) is the single release-version source (`MAJOR.MINOR.PATCH`, no `v` prefix).
+  Read it through `scripts/version.sh` in build tooling. Do not hard-code an extension or
+  package version elsewhere. See [docs/RELEASING.md](docs/RELEASING.md) for the release workflow.
 - Tags matching `v*` trigger `.github/workflows/build-deb.yml`, which runs `setup.sh` then
   `packaging/build-deb.sh` to produce and upload a `.deb`, then attaches it to the GitHub release.
+  The tag must match `v` plus `VERSION`; packaging also verifies the compiled module's version.
 - `packaging/dependencies.txt` documents the shared library dependency tree for the built
   extension; update it if you change linked libraries.

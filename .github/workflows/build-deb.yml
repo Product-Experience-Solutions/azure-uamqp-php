@@ -17,6 +17,8 @@ jobs:
       PHUAMQP_PHP_MAJOR_VERSION: ${{ matrix.php }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check release version
+        run: bash scripts/version.sh --check-tag "$GITHUB_REF_NAME"
       - name: Add PHP package repository
         run: |
           sudo apt-get update

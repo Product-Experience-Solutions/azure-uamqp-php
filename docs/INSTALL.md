@@ -12,7 +12,7 @@ At a high level, `setup.sh`:
 4. Installs required Debian packages.
 5. Builds and installs:
    - Azure C Shared Utility
-   - Azure uAMQP C
+   - Azure uAMQP C, with this extension's required receiver-credit patch
    - PHP-CPP
 6. Builds the PHP extension.
 7. Installs and enables the extension.
@@ -26,6 +26,17 @@ Run the script from a shell with sufficient privileges, because it installs pack
 ```bash
 sudo bash setup.sh
 ```
+
+## Updating a running application
+
+After installation, restart PHP-FPM and any long-running PHP workers using their service
+manager. A graceful FPM reload that re-executes the master also loads the new libraries once
+the old workers finish. Restarting only a child worker is insufficient: it inherits the
+extension loaded by the existing master.
+
+The setup check uses a fresh CLI process. Verify `phpversion('uamqpphpbinding')` through the
+application's FPM pool as well; CLI and FPM can report different versions after an upgrade.
+The script does not restart application services automatically.
 
 ## Environment variables
 
@@ -50,6 +61,14 @@ Example:
 ```bash
 export PHUAMQP_PHP_MAJOR_VERSION=8.3
 ```
+
+### `PHUAMQP_LIBS_BUILD_DIR`
+
+Optional directory for dependency checkouts and builds; defaults to `libs-build`
+inside the extension source directory. The uAMQP patch is applied from the
+extension's tracked `patches` directory before compiling this dependency. See
+[receiver-credit patch details](../patches/README.md) when upgrading an existing
+uAMQP installation. Rebuild both the dependency and extension together.
 
 ### `PHUAMQP_PHP_CPP_VERSION`
 

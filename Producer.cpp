@@ -79,7 +79,7 @@ void Producer::publish(Message *message)
             break;
         }
     }
-    message_destroy(msg);
+    // Message owns this handle; the sender retains its own copy while sending.
     messagesender_destroy(message_sender);
     link_destroy(link);
 

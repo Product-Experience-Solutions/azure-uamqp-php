@@ -11,13 +11,13 @@ private:
     std::vector<unsigned char> bodyBytes;
     bool bodyDecoded = false;
     MESSAGE_HANDLE message;
-    AMQP_VALUE application_properties;
-    AMQP_VALUE annotations_map;
     BINARY_DATA binary_data;
 
 public:
     Message();
-    virtual ~Message() = default;
+    virtual ~Message();
+    Message(const Message &other);
+    Message& operator=(const Message&) = delete;
 
     void setMessageHandler(MESSAGE_HANDLE message);
     MESSAGE_HANDLE getMessageHandler();
@@ -26,10 +26,14 @@ public:
     void __construct(Php::Parameters &params);
     Php::Value getBody();
     Php::Value getBodyType();
+    Php::Value getMessageId();
+    void setMessageId(Php::Parameters &params);
+    Php::Value getDeliveryCount();
     Php::Value getApplicationProperty(Php::Parameters &params);
     Php::Value getApplicationProperties();
     void setApplicationProperty(Php::Parameters &params);
     Php::Value getMessageAnnotation(Php::Parameters &params);
+    Php::Value getMessageAnnotations();
     void setMessageAnnotation(Php::Parameters &params);
 };
 

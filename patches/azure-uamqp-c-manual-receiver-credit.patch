@@ -1,0 +1,169 @@
+diff --git a/inc/azure_uamqp_c/link.h b/inc/azure_uamqp_c/link.h
+index d4570f4..7bf8c85 100644
+--- a/inc/azure_uamqp_c/link.h
++++ b/inc/azure_uamqp_c/link.h
+@@ -68,6 +68,12 @@ MOCKABLE_FUNCTION(, int, link_get_max_message_size, LINK_HANDLE, link, uint64_t*
+ MOCKABLE_FUNCTION(, int, link_get_peer_max_message_size, LINK_HANDLE, link, uint64_t*, peer_max_message_size);
+ MOCKABLE_FUNCTION(, int, link_set_attach_properties, LINK_HANDLE, link, fields, attach_properties);
+ MOCKABLE_FUNCTION(, int, link_set_max_link_credit, LINK_HANDLE, link, uint32_t, max_link_credit);
++/* Explicit receiver credit disables automatic replenishment. Before attach it sets
++ * the initial allowance; afterwards it replaces the remaining allowance. */
++MOCKABLE_FUNCTION(, int, link_set_receiver_credit, LINK_HANDLE, link, uint32_t, credit);
++/* Drain keeps callbacks alive while the sender consumes or returns issued credit. */
++MOCKABLE_FUNCTION(, int, link_drain, LINK_HANDLE, link);
++MOCKABLE_FUNCTION(, int, link_get_drain_complete, LINK_HANDLE, link, bool*, complete);
+ MOCKABLE_FUNCTION(, int, link_get_name, LINK_HANDLE, link, const char**, link_name);
+ MOCKABLE_FUNCTION(, int, link_get_received_message_id, LINK_HANDLE, link, delivery_number*, message_id);
+ MOCKABLE_FUNCTION(, int, link_send_disposition, LINK_HANDLE, link, delivery_number, message_number, AMQP_VALUE, delivery_state);
+diff --git a/src/link.c b/src/link.c
+index 4ef4026..4481510 100644
+--- a/src/link.c
++++ b/src/link.c
+@@ -61,6 +61,9 @@ typedef struct LINK_INSTANCE_TAG
+     uint64_t peer_max_message_size;
+     uint32_t current_link_credit;
+     uint32_t max_link_credit;
++    bool receiver_credit_manual;
++    bool receiver_drain;
++    bool receiver_drain_complete;
+     uint32_t available;
+     fields attach_properties;
+     bool is_underlying_session_begun;
+@@ -140,6 +143,11 @@ static int send_flow(LINK_INSTANCE* link)
+             LogError("Cannot set delivery count on flow performative");
+             result = MU_FAILURE;
+         }
++        else if (link->receiver_drain && flow_set_drain(flow, true) != 0)
++        {
++            LogError("Cannot set drain on flow performative");
++            result = MU_FAILURE;
++        }
+         else
+         {
+             if (session_send_flow(link->link_endpoint, flow) != 0)
+@@ -348,7 +356,10 @@ static void link_frame_received(void* context, AMQP_VALUE performative, uint32_t
+                 {
+                     if (link_instance->role == role_receiver)
+                     {
+-                        link_instance->current_link_credit = link_instance->max_link_credit;
++                        if (!link_instance->receiver_credit_manual)
++                        {
++                            link_instance->current_link_credit = link_instance->max_link_credit;
++                        }
+                         send_flow(link_instance);
+                     }
+                     else
+@@ -406,6 +417,29 @@ static void link_frame_received(void* context, AMQP_VALUE performative, uint32_t
+                 }
+             }
+ 
++            else if (link_instance->receiver_drain)
++            {
++                bool drain = false;
++                uint32_t returned_credit;
++                delivery_number sender_delivery_count;
++                uint32_t sender_link_credit;
++
++                if (flow_get_drain(flow_handle, &drain) == 0 && drain &&
++                    flow_get_delivery_count(flow_handle, &sender_delivery_count) == 0 &&
++                    flow_get_link_credit(flow_handle, &sender_link_credit) == 0 &&
++                    sender_link_credit == 0)
++                {
++                    /* Serial arithmetic also handles a delivery-count wraparound. */
++                    returned_credit = sender_delivery_count - link_instance->delivery_count;
++                    if (returned_credit <= link_instance->current_link_credit)
++                    {
++                        link_instance->delivery_count = sender_delivery_count;
++                        link_instance->current_link_credit -= returned_credit;
++                        link_instance->receiver_drain_complete = link_instance->current_link_credit == 0;
++                    }
++                }
++            }
++
+             flow_destroy(flow_handle);
+         }
+     }
+@@ -424,7 +458,8 @@ static void link_frame_received(void* context, AMQP_VALUE performative, uint32_t
+                 bool more;
+                 bool is_error;
+ 
+-                if (link_instance->current_link_credit <= RECEIVER_MIN_LINK_CREDIT)
++                if (!link_instance->receiver_credit_manual && !link_instance->receiver_drain &&
++                    link_instance->current_link_credit <= RECEIVER_MIN_LINK_CREDIT)
+                 {
+                     link_instance->current_link_credit = link_instance->max_link_credit;
+                     send_flow(link_instance);
+@@ -470,7 +505,11 @@ static void link_frame_received(void* context, AMQP_VALUE performative, uint32_t
+                         const unsigned char* indicate_payload_bytes;
+                         uint32_t indicate_payload_size;
+ 
+-                        link_instance->current_link_credit--;
++                        /* Transfers already in flight can arrive after credit was revoked. */
++                        if (link_instance->current_link_credit > 0)
++                        {
++                            link_instance->current_link_credit--;
++                        }
+                         link_instance->delivery_count++;
+                         /* if no previously stored chunks then simply report the current payload */
+                         if (link_instance->received_payload_size > 0)
+@@ -1170,6 +1209,60 @@ int link_set_max_link_credit(LINK_HANDLE link, uint32_t max_link_credit)
+     return result;
+ }
+ 
++int link_set_receiver_credit(LINK_HANDLE link, uint32_t credit)
++{
++    int result;
++
++    if (link == NULL || link->role != role_receiver || link->is_closed ||
++        link->link_state == LINK_STATE_ERROR ||
++        (link->receiver_drain && !link->receiver_drain_complete))
++    {
++        result = MU_FAILURE;
++    }
++    else
++    {
++        link->receiver_credit_manual = true;
++        link->receiver_drain = false;
++        link->receiver_drain_complete = false;
++        link->current_link_credit = credit;
++        result = (link->link_state == LINK_STATE_ATTACHED ||
++            link->link_state == LINK_STATE_HALF_ATTACHED_ATTACH_RECEIVED) ? send_flow(link) : 0;
++    }
++
++    return result;
++}
++
++int link_drain(LINK_HANDLE link)
++{
++    int result;
++
++    if (link == NULL || link->role != role_receiver || link->is_closed ||
++        link->link_state != LINK_STATE_ATTACHED)
++    {
++        result = MU_FAILURE;
++    }
++    else
++    {
++        link->receiver_credit_manual = true;
++        link->receiver_drain = true;
++        link->receiver_drain_complete = false;
++        result = send_flow(link);
++    }
++
++    return result;
++}
++
++int link_get_drain_complete(LINK_HANDLE link, bool* complete)
++{
++    if (link == NULL || complete == NULL || link->role != role_receiver)
++    {
++        return MU_FAILURE;
++    }
++
++    *complete = link->receiver_drain_complete;
++    return 0;
++}
++
+ int link_attach(LINK_HANDLE link, ON_TRANSFER_RECEIVED on_transfer_received, ON_LINK_STATE_CHANGED on_link_state_changed, ON_LINK_FLOW_ON on_link_flow_on, void* callback_context)
+ {
+     int result;

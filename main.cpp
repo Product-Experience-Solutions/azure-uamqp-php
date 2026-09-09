@@ -5,11 +5,15 @@
 #include "Connection.h"
 #include "Message.h"
 
+#ifndef PHUAMQP_VERSION
+#error "PHUAMQP_VERSION must be supplied by the build from VERSION"
+#endif
+
 extern "C" {
 
     PHPCPP_EXPORT void *get_module()
     {
-        static Php::Extension extension("uamqpphpbinding", "0.2.3");
+        static Php::Extension extension("uamqpphpbinding", PHUAMQP_VERSION);
 
         Php::Class<Connection> connection("Azure\\uAMQP\\Connection");
         connection.method<&Connection::__construct>("__construct", {
@@ -27,7 +31,8 @@ extern "C" {
         connection.method<&Connection::setCallback>("setCallback", {
             Php::ByVal("resourceName", Php::Type::String),
             Php::ByVal("callback", Php::Type::Callable),
-            Php::ByVal("loopFn", Php::Type::Callable)
+            Php::ByVal("loopFn", Php::Type::Callable),
+            Php::ByVal("maxLinkCredit", Php::Type::Numeric, false)
         });
         connection.method<&Connection::consume>("consume");
         connection.method<&Connection::wasCloseRequested>("wasCloseRequested");
@@ -39,24 +44,30 @@ extern "C" {
         });
         message.method<&Message::getBody>("getBody");
         message.method<&Message::getBodyType>("getBodyType");
+        message.method<&Message::getMessageId>("getMessageId");
+        message.method<&Message::getDeliveryCount>("getDeliveryCount");
+        message.method<&Message::getMessageAnnotations>("getMessageAnnotations");
+        message.method<&Message::setMessageId>("setMessageId", {
+            Php::ByVal("value", Php::Type::String)
+        });
         message.method<&Message::getApplicationProperty>("getApplicationProperty", {
             Php::ByVal("key", Php::Type::String),
-            Php::ByVal("type", Php::Type::String)
+            Php::ByVal("type", Php::Type::String, false)
         });
         message.method<&Message::getApplicationProperties>("getApplicationProperties");
         message.method<&Message::getMessageAnnotation>("getMessageAnnotation", {
             Php::ByVal("key", Php::Type::String),
-            Php::ByVal("type", Php::Type::String)
+            Php::ByVal("type", Php::Type::String, false)
         });
         message.method<&Message::setApplicationProperty>("setApplicationProperty", {
             Php::ByVal("key", Php::Type::String),
             Php::ByVal("type", Php::Type::String),
-            Php::ByVal("value", Php::Type::String)
+            Php::ByVal("value")
         });
         message.method<&Message::setMessageAnnotation>("setMessageAnnotation", {
             Php::ByVal("key", Php::Type::String),
             Php::ByVal("type", Php::Type::String),
-            Php::ByVal("value", Php::Type::String)
+            Php::ByVal("value")
         });
 
         extension.add(std::move(connection));

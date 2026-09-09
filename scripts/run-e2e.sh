@@ -89,3 +89,5 @@ rm -f "$CONSUMER_LOG" "$PRODUCER_LOG"
 
 echo "E2E producer/consumer flow completed successfully."
 
+php "${PROJECT_DIR}/tests/message-metadata-test.php"
+php "${PROJECT_DIR}/tests/receiver-broker-test.php"

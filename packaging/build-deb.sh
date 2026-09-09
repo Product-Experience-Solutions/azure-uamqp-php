@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PHUAMQP_PACKAGE_VERSION="v0.2.4"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PACKAGE_VERSION="$(bash "${PROJECT_ROOT}/scripts/version.sh")"
 
 PHP_MAJOR_VERSION="${PHUAMQP_PHP_MAJOR_VERSION:-${PHP_MAJOR_VERSION:-8.3}}"
 PHP_CONFIG_BIN="php${PHP_MAJOR_VERSION}-config"
+PHP_BIN="php${PHP_MAJOR_VERSION}"
 if ! command -v "${PHP_CONFIG_BIN}" >/dev/null 2>&1; then
   PHP_CONFIG_BIN="php-config"
 fi
+if ! command -v "${PHP_BIN}" >/dev/null 2>&1; then
+  PHP_BIN="php"
+fi
 PHP_API="${PHUAMQP_PHP_API:-$(${PHP_CONFIG_BIN} --phpapi)}"
-PACKAGE_VERSION="${PHUAMQP_PACKAGE_VERSION:-${GITHUB_REF_NAME:-}}"
-PACKAGE_VERSION="${PACKAGE_VERSION#v}"
-PACKAGE_VERSION="${PACKAGE_VERSION:-0.2.4}"
 
 EXTENSION_NAME="uamqpphpbinding.so"
 MODULE_NAME="uamqpphpbinding"
@@ -61,6 +62,21 @@ BUILD_OUTPUT="$(locate_extension || true)"
 if [[ -z "${BUILD_OUTPUT}" || ! -f "${BUILD_OUTPUT}" ]]; then
   echo "Built extension not found in the filesystem: ${EXTENSION_NAME}" >&2
   echo "Run ./setup.sh first, or pass a filesystem location by placing the file in a standard extension path." >&2
+  exit 1
+fi
+
+if ! BUILT_VERSION="$("${PHP_BIN}" -n -d "extension=${BUILD_OUTPUT}" -r '
+  if (!extension_loaded("uamqpphpbinding")) {
+    exit(1);
+  }
+  echo phpversion("uamqpphpbinding");
+')"; then
+  echo "Could not load the built extension to verify its version: ${BUILD_OUTPUT}" >&2
+  exit 1
+fi
+
+if [[ "${BUILT_VERSION}" != "${PACKAGE_VERSION}" ]]; then
+  echo "Built extension version '${BUILT_VERSION}' does not match VERSION '${PACKAGE_VERSION}'. Rebuild the extension before packaging." >&2
   exit 1
 fi
 
