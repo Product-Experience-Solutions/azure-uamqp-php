@@ -27,6 +27,17 @@ Run the script from a shell with sufficient privileges, because it installs pack
 sudo bash setup.sh
 ```
 
+## Updating a running application
+
+After installation, restart PHP-FPM and any long-running PHP workers using their service
+manager. A graceful FPM reload that re-executes the master also loads the new libraries once
+the old workers finish. Restarting only a child worker is insufficient: it inherits the
+extension loaded by the existing master.
+
+The setup check uses a fresh CLI process. Verify `phpversion('uamqpphpbinding')` through the
+application's FPM pool as well; CLI and FPM can report different versions after an upgrade.
+The script does not restart application services automatically.
+
 ## Environment variables
 
 The script supports these environment variables:
